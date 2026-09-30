@@ -78,6 +78,16 @@ on:
         required: false
         type: boolean
         default: false
+      ENABLE_MQ_DEADLINE:
+        description: '[Extra] Set mq-deadline as default I/O scheduler'
+        required: false
+        type: boolean
+        default: true
+      ENABLE_BASEBAND_GUARD:
+        description: '[Extra] Enable Baseband-guard (Anti-Format)'
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   build:
@@ -116,7 +126,6 @@ jobs:
       - name: Set Kernel Environment Variables
         run: |
           echo "KERNEL_TREE_BRANCH=${{ github.event.inputs.KERNEL_TREE_BRANCH_1 }}" >> $GITHUB_ENV
-         
       - name: Checkout Kernel via PAT
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
@@ -127,6 +136,27 @@ jobs:
             REPO_URL="${{ github.event.inputs.KERNEL_TREE_1 }}"
           fi
           git clone --depth=1 --branch "${{ env.KERNEL_TREE_BRANCH }}" "${REPO_URL}" kernel_tree
+
+      - name: Setup Baseband-guard
+        if: ${{ github.event.inputs.ENABLE_BASEBAND_GUARD == 'true' }}
+        run: |
+          cd kernel_tree
+          echo "==========================================="
+          echo " [*] Initializing Baseband-guard Setup"
+          echo "==========================================="
+          echo "[*] Downloading and running Baseband-guard remote setup script..."
+          wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
+
+          echo "[*] Patching security/Kconfig for baseband_guard..."
+          sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' security/Kconfig
+
+          echo "[*] Patching whitelist in baseband_guard.c..."
+          sed -i 's|return deny("write to protected partition", file, inode, 0);|if (file \&\& file->f_path.dentry \&\& (strstr(file->f_path.dentry->d_name.name, "sdg") \|\| strstr(file->f_path.dentry->d_name.name, "sdh") \|\| strstr(file->f_path.dentry->d_name.name, "sdi") \|\| strstr(file->f_path.dentry->d_name.name, "mapper") \|\| strstr(file->f_path.dentry->d_name.name, "dm-") \|\| strstr(file->f_path.dentry->d_name.name, "vold"))) return 0;\n\treturn deny("write to protected partition", file, inode, 0);|g' Baseband-guard/baseband_guard.c
+          sed -i 's|return deny("setattr on protected partition", 0, inode, 0);|if (dentry \&\& (strstr(dentry->d_name.name, "sdg") \|\| strstr(dentry->d_name.name, "sdh") \|\| strstr(dentry->d_name.name, "sdi") \|\| strstr(dentry->d_name.name, "mapper") \|\| strstr(dentry->d_name.name, "dm-") \|\| strstr(dentry->d_name.name, "vold"))) return 0;\n\treturn deny("setattr on protected partition", 0, inode, 0);|g' Baseband-guard/baseband_guard.c
+          sed -i 's|return deny("destructive ioctl on protected partition", file, inode, cmd);|if (file \&\& file->f_path.dentry \&\& (strstr(file->f_path.dentry->d_name.name, "sdg") \|\| strstr(file->f_path.dentry->d_name.name, "sdh") \|\| strstr(file->f_path.dentry->d_name.name, "sdi") \|\| strstr(file->f_path.dentry->d_name.name, "mapper") \|\| strstr(file->f_path.dentry->d_name.name, "dm-") \|\| strstr(file->f_path.dentry->d_name.name, "vold"))) return 0;\n\treturn deny("destructive ioctl on protected partition", file, inode, cmd);|g' Baseband-guard/baseband_guard.c
+
+          echo "[+] DONE! Whitelisted: sdg, sdh, sdi, mapper, dm-, vold. Baseband is fully protected."
+          echo "==========================================="
 
       - name: Kernel Version
         run: |
@@ -201,7 +231,6 @@ jobs:
           DEFCONFIG="arch/arm64/configs/vendor/alioth_defconfig"
           
           chmod +x ./scripts/config
-
           # Function to toggle configs and echo the status
           toggle_config() {
             local feature=$1
@@ -221,6 +250,19 @@ jobs:
           toggle_config "CONFIG_NOMOUNT" "${{ github.event.inputs.ENABLE_NOMOUNT }}"
           toggle_config "CONFIG_RW_SWAPPINESS" "${{ github.event.inputs.ENABLE_RW_SWAPPINESS }}"
           toggle_config "CONFIG_BYPASS_CHARGING" "${{ github.event.inputs.ENABLE_BYPASS_CHARGING }}"
+
+          if [[ "${{ github.event.inputs.ENABLE_MQ_DEADLINE }}" == "true" ]]; then
+            echo "  [+] Setting mq-deadline scheduler"
+            ./scripts/config --file $DEFCONFIG --enable "CONFIG_MQ_IOSCHED_DEADLINE"
+            ./scripts/config --file $DEFCONFIG --enable "CONFIG_DEFAULT_MQ_DEADLINE"
+            ./scripts/config --file $DEFCONFIG --set-str CONFIG_DEFAULT_IOSCHED "mq-deadline"
+          fi
+
+          if [[ "${{ github.event.inputs.ENABLE_BASEBAND_GUARD }}" == "true" ]]; then
+            echo "  [+] Enabling Baseband-guard in defconfig"
+            ./scripts/config --file $DEFCONFIG --enable "CONFIG_BBG"
+            sed -i '/CONFIG_LSM=/ { /baseband_guard/! s/"$/,baseband_guard"/ }' $DEFCONFIG
+          fi
           echo "================================="
 
       - name: Apply Modifications (if modified build)
@@ -287,7 +329,6 @@ jobs:
           path: |
             alioth-j3s-dtbo-miui.img
             alioth-effcpu-dtb
-
       - name: Upload Kernel Artifacts
         uses: actions/upload-artifact@v4
         if: matrix.kernel == 3
@@ -378,4 +419,3 @@ jobs:
             AnyKernel3-${{ matrix.kernel }}/
             !AnyKernel3-${{ matrix.kernel }}/.git
             !AnyKernel3-${{ matrix.kernel }}/.github
-      
