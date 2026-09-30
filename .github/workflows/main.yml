@@ -3,7 +3,7 @@ name: FD-release-alioth-builder
 on:
   pull_request:
   workflow_dispatch:
-    inputs
+    inputs:
       KERNEL_TREE_1:
         description: 'Kernel Tree'
         default: 'https://github.com/re-noroi/kernel_sm8250'
