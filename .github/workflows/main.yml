@@ -153,7 +153,8 @@ jobs:
           sed -i 's/HAS_DEFINE_LSM := .*/HAS_DEFINE_LSM := false/' Baseband-guard/Makefile
           sed -i '/#include "avc.h"/a #ifndef BBG_USE_DEFINE_LSM\n#include "bbg_tracing.h"\n#endif' security/selinux/include/objsec.h
           sed -i '/u32 sockcreate_sid[;]*/a #ifndef BBG_USE_DEFINE_LSM\n\tstruct bbg_cred_security_struct  bbg_cred; /* bbg cred security */\n#endif' security/selinux/include/objsec.h
-          ln -sfn "../../Baseband-guard/tracing/tracing.h" security/selinux/include/bbg_tracing.h
+          cp -f Baseband-guard/tracing/tracing.h security/selinux/include/bbg_tracing.h
+          cp -f Baseband-guard/tracing/tracing.h security/selinux/bbg_tracing.h
 
           echo "[*] Patching whitelist in baseband_guard.c..."
           sed -i 's|return deny("write to protected partition", file, inode, 0);|if (file \&\& file->f_path.dentry \&\& (strstr(file->f_path.dentry->d_name.name, "sdg") \|\| strstr(file->f_path.dentry->d_name.name, "sdh") \|\| strstr(file->f_path.dentry->d_name.name, "sdi") \|\| strstr(file->f_path.dentry->d_name.name, "mapper") \|\| strstr(file->f_path.dentry->d_name.name, "dm-") \|\| strstr(file->f_path.dentry->d_name.name, "vold"))) return 0;\n\treturn deny("write to protected partition", file, inode, 0);|g' Baseband-guard/baseband_guard.c
