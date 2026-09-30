@@ -146,6 +146,27 @@ jobs:
           echo "==========================================="
           echo " [*] Initializing Baseband-guard Setup"
           echo "==========================================="
+          echo "[*] Downloading Baseband-guard setup script..."
+          wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh > bbg_setup.sh
+
+          # Force Linux 4.19 pre-5.1 compatibility (SELinux cred extension, no broken LSM blobs)
+          sed -i 's/if ! grep -q "#define DEFINE_LSM(lsm)"/if true ||/' bbg_setup.sh
+          bash bbg_setup.sh
+          rm -f bbg_setup.sh
+
+          echo "[*] Configuring Baseband-guard Makefile for 4.19..."
+          sed -i 's/HAS_DEFINE_LSM := .*/HAS_DEFINE_LSM := false/' Baseband-guard/Makefile
+          true > Baseband-guard/sepatch.txt
+
+          echo "[*] Patching whitelist in baseband_guard.c..."
+          sed -i 's|return deny("write to protected partition", file, inode, 0);|if (file \&\& file->f_path.dentry \&\& (strstr(file->f_path.dentry->d_name.name, "sdg") \|\| strstr(file->f_path.dentry->d_name.name, "sdh") \|\| strstr(file->f_path.dentry->d_name.name, "sdi") \|\| strstr(file->f_path.dentry->d_name.name, "mapper") \|\| strstr(file->f_path.dentry->d_name.name, "dm-") \|\| strstr(file->f_path.dentry->d_name.name, "vold"))) return 0;\n\treturn deny("write to protected partition", file, inode, 0);|g' Baseband-guard/baseband_guard.c
+          sed -i 's|return deny("setattr on protected partition", 0, inode, 0);|if (dentry \&\& (strstr(dentry->d_name.name, "sdg") \|\| strstr(dentry->d_name.name, "sdh") \|\| strstr(dentry->d_name.name, "sdi") \|\| strstr(dentry->d_name.name, "mapper") \|\| strstr(dentry->d_name.name, "dm-") \|\| strstr(dentry->d_name.name, "vold"))) return 0;\n\treturn deny("setattr on protected partition", 0, inode, 0);|g' Baseband-guard/baseband_guard.c
+          sed -i 's|return deny("destructive ioctl on protected partition", file, inode, cmd);|if (file \&\& file->f_path.dentry \&\& (strstr(file->f_path.dentry->d_name.name, "sdg") \|\| strstr(file->f_path.dentry->d_name.name, "sdh") \|\| strstr(file->f_path.dentry->d_name.name, "sdi") \|\| strstr(file->f_path.dentry->d_name.name, "mapper") \|\| strstr(file->f_path.dentry->d_name.name, "dm-") \|\| strstr(file->f_path.dentry->d_name.name, "vold"))) return 0;\n\treturn deny("destructive ioctl on protected partition", file, inode, cmd);|g' Baseband-guard/baseband_guard.c
+
+          echo "[+] DONE! Whitelisted: sdg, sdh, sdi, mapper, dm-, vold. Baseband is fully protected."
+          echo "===========================================" 
+          echo " [*] Initializing Baseband-guard Setup"
+          echo "==========================================="
           echo "[*] Downloading and running Baseband-guard remote setup script..."
           wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
 
