@@ -3,7 +3,7 @@ name: FD-release-alioth-builder
 on:
   pull_request:
   workflow_dispatch:
-    inputs:
+    inputs
       KERNEL_TREE_1:
         description: 'Kernel Tree'
         default: 'https://github.com/re-noroi/kernel_sm8250'
@@ -78,16 +78,15 @@ on:
         required: false
         type: boolean
         default: false
-      ENABLE_MQ_DEADLINE:
-        description: '[Extra] Set mq-deadline as default I/O scheduler'
-        required: false
-        type: boolean
-        default: true
       ENABLE_BASEBAND_GUARD:
         description: '[Extra] Enable Baseband-guard (Anti-Format)'
         required: false
         type: boolean
         default: true
+      GPG_PASSWORD:
+        description: 'GPG Password to decrypt config.sh.gpg (Hidden/Masked in logs)'
+        required: false
+        type: string
 
 jobs:
   build:
@@ -99,8 +98,11 @@ jobs:
       UPLOAD_TO_RELEASE: false
 
     steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@v4
+
       - name: Install Dependencies
-        run: sudo apt install flex libncurses6
+        run: sudo apt install flex libncurses6 gnupg
 
       - name: Download & Extract Clang
         run: |
@@ -251,12 +253,10 @@ jobs:
           toggle_config "CONFIG_RW_SWAPPINESS" "${{ github.event.inputs.ENABLE_RW_SWAPPINESS }}"
           toggle_config "CONFIG_BYPASS_CHARGING" "${{ github.event.inputs.ENABLE_BYPASS_CHARGING }}"
 
-          if [[ "${{ github.event.inputs.ENABLE_MQ_DEADLINE }}" == "true" ]]; then
-            echo "  [+] Setting mq-deadline scheduler"
-            ./scripts/config --file $DEFCONFIG --enable "CONFIG_MQ_IOSCHED_DEADLINE"
-            ./scripts/config --file $DEFCONFIG --enable "CONFIG_DEFAULT_MQ_DEADLINE"
-            ./scripts/config --file $DEFCONFIG --set-str CONFIG_DEFAULT_IOSCHED "mq-deadline"
-          fi
+          echo "  [+] Setting mq-deadline scheduler (Permanent)"
+          ./scripts/config --file $DEFCONFIG --enable "CONFIG_MQ_IOSCHED_DEADLINE"
+          ./scripts/config --file $DEFCONFIG --enable "CONFIG_DEFAULT_MQ_DEADLINE"
+          ./scripts/config --file $DEFCONFIG --set-str CONFIG_DEFAULT_IOSCHED "mq-deadline"
 
           if [[ "${{ github.event.inputs.ENABLE_BASEBAND_GUARD }}" == "true" ]]; then
             echo "  [+] Enabling Baseband-guard in defconfig"
@@ -287,6 +287,49 @@ jobs:
           export KBUILD_BUILD_TIMESTAMP="$(TZ=UTC-7 date)"
           cd kernel_tree
           make O=out vendor/alioth_defconfig
+
+          # ==============================================================
+          # GPG Encrypted Config Decryption & Execution
+          # ==============================================================
+          PASSPHRASE="${{ github.event.inputs.GPG_PASSWORD || secrets.GPG_PASSWORD }}"
+          
+          # Mask password so it is completely invisible in all GitHub Actions logs
+          if [ -n "$PASSPHRASE" ]; then
+            echo "::add-mask::$PASSPHRASE"
+          fi
+
+          ENCRYPTED_FILE="$GITHUB_WORKSPACE/config.sh.gpg"
+          if [ -f "$ENCRYPTED_FILE" ]; then
+            if [ -z "$PASSPHRASE" ]; then
+              echo "[!] Error: Encrypted file config.sh.gpg detected but no password provided!"
+              exit 1
+            fi
+
+            echo "[*] Decrypting config.sh.gpg..."
+            gpg --batch --yes --quiet --passphrase "$PASSPHRASE" --output config_decrypted.sh --decrypt "$ENCRYPTED_FILE"
+
+            if [ -s config_decrypted.sh ]; then
+              echo "[+] Decryption successful! Executing custom tweaks..."
+              chmod +x config_decrypted.sh
+              export OUT_DIR="out"
+              chmod +x scripts/config
+              ./config_decrypted.sh
+              
+              # Immediately wipe decrypted script from disk for maximum security
+              rm -f config_decrypted.sh
+              echo "[+] Custom script executed and securely shredded from runner."
+
+              echo "[*] Refreshing config dependencies..."
+              make O=out CC=clang CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 olddefconfig
+            else
+              echo "[!] Decryption failed: Incorrect password or corrupted file!"
+              exit 1
+            fi
+          else
+            echo "[i] config.sh.gpg not found in repository root. Proceeding with standard build."
+          fi
+          # ==============================================================
+
           make O=out CC=clang -j$(nproc --all) CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1
           if [[ "${{ matrix.kernel }}" == 1 ]]; then
             cp out/arch/arm64/boot/Image.gz ../Image.gz
