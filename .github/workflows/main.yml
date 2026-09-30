@@ -151,6 +151,7 @@ jobs:
 
           echo "[*] Configuring Baseband-guard for Linux 4.19 compatibility..."
           sed -i 's/HAS_DEFINE_LSM := .*/HAS_DEFINE_LSM := false/' Baseband-guard/Makefile
+          sed -i 's/security_initcall(bbg_init);/late_initcall(bbg_init);/' Baseband-guard/baseband_guard.c
           sed -i '/#include "avc.h"/a #ifndef BBG_USE_DEFINE_LSM\n#include "bbg_tracing.h"\n#endif' security/selinux/include/objsec.h
           sed -i '/u32 sockcreate_sid[;]*/a #ifndef BBG_USE_DEFINE_LSM\n\tstruct bbg_cred_security_struct  bbg_cred; /* bbg cred security */\n#endif' security/selinux/include/objsec.h
           cp -f Baseband-guard/tracing/tracing.h security/selinux/include/bbg_tracing.h
