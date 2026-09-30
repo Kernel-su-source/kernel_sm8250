@@ -62,22 +62,22 @@ on:
         description: '[Extra] Enable NT synchronization (NTSYNC)'
         required: false
         type: boolean
-        default: true
+        default: false
       ENABLE_NOMOUNT:
         description: '[Extra] Enable NoMount support (NOMOUNT)'
         required: false
         type: boolean
-        default: false
+        default: true
       ENABLE_RW_SWAPPINESS:
         description: '[Extra] Allow modification of swappiness'
         required: false
         type: boolean
-        default: false
+        default: true
       ENABLE_BYPASS_CHARGING:
         description: '[Extra] Enable bypass charging'
         required: false
         type: boolean
-        default: false
+        default: true
       ENABLE_BASEBAND_GUARD:
         description: '[Extra] Enable Baseband-guard (Anti-Format)'
         required: false
@@ -152,6 +152,7 @@ jobs:
           echo "[*] Configuring Baseband-guard for Linux 4.19 compatibility..."
           sed -i 's/HAS_DEFINE_LSM := .*/HAS_DEFINE_LSM := false/' Baseband-guard/Makefile
           sed -i 's/security_initcall(bbg_init);/late_initcall(bbg_init);/' Baseband-guard/baseband_guard.c
+          sed -i '/static inline struct task_security_struct \*selinux_cred/,+3d' Baseband-guard/tracing/tracing.c
           sed -i '/#include "avc.h"/a #ifndef BBG_USE_DEFINE_LSM\n#include "bbg_tracing.h"\n#endif' security/selinux/include/objsec.h
           sed -i '/u32 sockcreate_sid[;]*/a #ifndef BBG_USE_DEFINE_LSM\n\tstruct bbg_cred_security_struct  bbg_cred; /* bbg cred security */\n#endif' security/selinux/include/objsec.h
           cp -f Baseband-guard/tracing/tracing.h security/selinux/include/bbg_tracing.h
