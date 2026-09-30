@@ -258,10 +258,12 @@ jobs:
           toggle_config "CONFIG_RW_SWAPPINESS" "${{ github.event.inputs.ENABLE_RW_SWAPPINESS }}"
           toggle_config "CONFIG_BYPASS_CHARGING" "${{ github.event.inputs.ENABLE_BYPASS_CHARGING }}"
 
-          echo "  [+] Setting mq-deadline scheduler (Permanent)"
+          echo "  [+] Setting Deadline I/O scheduler (Permanent)"
+          ./scripts/config --file $DEFCONFIG --enable "CONFIG_IOSCHED_DEADLINE"
+          ./scripts/config --file $DEFCONFIG --enable "CONFIG_DEFAULT_DEADLINE"
+          ./scripts/config --file $DEFCONFIG --disable "CONFIG_DEFAULT_CFQ"
+          ./scripts/config --file $DEFCONFIG --set-str CONFIG_DEFAULT_IOSCHED "deadline"
           ./scripts/config --file $DEFCONFIG --enable "CONFIG_MQ_IOSCHED_DEADLINE"
-          ./scripts/config --file $DEFCONFIG --enable "CONFIG_DEFAULT_MQ_DEADLINE"
-          ./scripts/config --file $DEFCONFIG --set-str CONFIG_DEFAULT_IOSCHED "mq-deadline"
 
           if [[ "${{ github.event.inputs.ENABLE_BASEBAND_GUARD }}" == "true" ]]; then
             echo "  [+] Enabling Baseband-guard in defconfig"
@@ -321,6 +323,13 @@ jobs:
               
               rm -f config_decrypted.sh
               echo "[+] Custom script executed and securely shredded from runner."
+
+              echo "[*] Ensuring Deadline I/O scheduler is set..."
+              ./scripts/config --file out/.config --enable CONFIG_IOSCHED_DEADLINE
+              ./scripts/config --file out/.config --enable CONFIG_DEFAULT_DEADLINE
+              ./scripts/config --file out/.config --disable CONFIG_DEFAULT_CFQ
+              ./scripts/config --file out/.config --set-str CONFIG_DEFAULT_IOSCHED "deadline"
+              ./scripts/config --file out/.config --enable CONFIG_MQ_IOSCHED_DEADLINE
 
               echo "[*] Refreshing config dependencies..."
               make O=out CC=clang CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 olddefconfig
