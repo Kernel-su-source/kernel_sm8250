@@ -42,7 +42,7 @@ on:
           - stock
           - W-variant
           - oplus-variant
-        default: stock
+        default: W-variant
       LTO_CHOICE:
         required: true
         type: choice
@@ -152,7 +152,6 @@ jobs:
           echo "[*] Configuring Baseband-guard for Linux 4.19 compatibility..."
           sed -i 's/HAS_DEFINE_LSM := .*/HAS_DEFINE_LSM := false/' Baseband-guard/Makefile
           sed -i 's/security_initcall(bbg_init);/late_initcall(bbg_init);/' Baseband-guard/baseband_guard.c
-          sed -i '/static inline struct task_security_struct \*selinux_cred/,+3d' Baseband-guard/tracing/tracing.c
           sed -i '/#include "avc.h"/a #ifndef BBG_USE_DEFINE_LSM\n#include "bbg_tracing.h"\n#endif' security/selinux/include/objsec.h
           sed -i '/u32 sockcreate_sid[;]*/a #ifndef BBG_USE_DEFINE_LSM\n\tstruct bbg_cred_security_struct  bbg_cred; /* bbg cred security */\n#endif' security/selinux/include/objsec.h
           cp -f Baseband-guard/tracing/tracing.h security/selinux/include/bbg_tracing.h
@@ -166,13 +165,27 @@ jobs:
           echo "[+] DONE! Whitelisted: sdg, sdh, sdi, mapper, dm-, vold. Baseband is fully protected."
           echo "==========================================="
 
+      - name: Restore 300MHz Minimum CPU Frequency
+        run: |
+          cd kernel_tree
+          python3 -c '
+          file = "arch/arm64/boot/dts/vendor/qcom/kona.dtsi"
+          with open(file, "r") as f:
+              c = f.read()
+          target = "\tqcom,cpufreq-table-0 =\n\t\t\t<1171200>,"
+          replacement = "\tqcom,cpufreq-table-0 =\n\t\t\t< 300000>,\n\t\t\t< 518400>,\n\t\t\t< 614400>,\n\t\t\t< 691200>,\n\t\t\t< 787200>,\n\t\t\t< 883200>,\n\t\t\t< 979200>,\n\t\t\t<1075200>,\n\t\t\t<1171200>,"
+          if target in c:
+              c = c.replace(target, replacement, 1)
+              with open(file, "w") as f:
+                  f.write(c)
+              print("[+] Successfully restored 300MHz minimum CPU frequency for cluster 0")
+          '
+
       - name: Kernel Version
         run: |
           cd kernel_tree
           EXTRA=""
-          if [[ "${{ github.event.inputs.VARIANT }}" == "W-variant" ]]; then
-            EXTRA="-W"
-          elif [[ "${{ github.event.inputs.VARIANT }}" == "oplus-variant" ]]; then
+          if [[ "${{ github.event.inputs.VARIANT }}" == "oplus-variant" ]]; then
             EXTRA="-oplus"
           fi
           sed -i -e "s/CONFIG_LOCALVERSION=\"-FakeDreamer\"/CONFIG_LOCALVERSION=\"${{ github.event.inputs.CUSTOM_SED }}${EXTRA}\"/" arch/arm64/configs/vendor/alioth_defconfig
@@ -456,9 +469,7 @@ jobs:
         run: |
           COMPILED_DATE=$(date +%Y%m%d)
           EXTRA2=""
-          if [[ "${{ github.event.inputs.VARIANT }}" == "W-variant" ]]; then
-            EXTRA2="-W"
-          elif [[ "${{ github.event.inputs.VARIANT }}" == "oplus-variant" ]]; then
+          if [[ "${{ github.event.inputs.VARIANT }}" == "oplus-variant" ]]; then
             EXTRA2="-OPLUS"
           fi
           if [[ "${{ matrix.kernel }}" == "1" ]]; then
