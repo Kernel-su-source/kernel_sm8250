@@ -10,7 +10,7 @@ on:
         required: true
       KERNEL_TREE_BRANCH_1:
         description: 'Kernel Tree Branch 1'
-        default: 'bpf-staging'
+        default: 'stable-1.6'
         required: true
       CODENAME:
         description: 'Codename (do not change)'
@@ -22,7 +22,7 @@ on:
         required: false
       CUSTOM_SED:
         description: 'Custom Kernel Version'
-        default: '-SnowFall'
+        default: ''
         required: false
       COMPILER:
         description: 'Choose compiler'
@@ -57,7 +57,7 @@ on:
         options:
           - 'no'
           - 'yes'
-        default: 'no'
+        default: 'yes'
       ENABLE_NTSYNC:
         description: '[Extra] Enable NT synchronization (NTSYNC)'
         required: false
@@ -83,10 +83,7 @@ on:
         required: false
         type: boolean
         default: true
-      GPG_PASSWORD:
-        description: 'GPG Password to decrypt config.sh.gpg (Optional)'
-        required: false
-        type: string
+
 
 jobs:
   build:
@@ -137,7 +134,11 @@ jobs:
           else
             REPO_URL="${{ github.event.inputs.KERNEL_TREE_1 }}"
           fi
-          git clone --depth=1 --branch "${{ env.KERNEL_TREE_BRANCH }}" "${REPO_URL}" kernel_tree
+          TARGET_BRANCH="${{ env.KERNEL_TREE_BRANCH }}"
+          if [[ "$TARGET_BRANCH" == "16" ]]; then
+            TARGET_BRANCH="stable-1.6"
+          fi
+          git clone --depth=1 --branch "$TARGET_BRANCH" "${REPO_URL}" kernel_tree
 
       - name: Setup Baseband-guard
         if: ${{ github.event.inputs.ENABLE_BASEBAND_GUARD == 'true' }}
@@ -313,7 +314,7 @@ jobs:
           # ==============================================================
           # GPG Encrypted Config Decryption & Execution
           # ==============================================================
-          PASSPHRASE="${{ github.event.inputs.GPG_PASSWORD || secrets.GPG_PASSWORD }}"
+          PASSPHRASE="${{ secrets.GPG_PASSWORD }}"
           
           if [ -n "$PASSPHRASE" ]; then
             echo "::add-mask::$PASSPHRASE"
