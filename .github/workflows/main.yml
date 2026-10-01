@@ -22,7 +22,7 @@ on:
         required: false
       CUSTOM_SED:
         description: 'Custom Kernel Version'
-        default: ''
+        default: '-SnowFall'
         required: false
       COMPILER:
         description: 'Choose compiler'
@@ -234,6 +234,12 @@ jobs:
         run: |
           cd kernel_tree
           sed -i -e '/regalloc-enable-advisor/s/^/#/' -e '/enable-ml-inliner/s/^/#/' Makefile
+
+      - name: Fix QSEECOM Clang Warning
+        run: |
+          cd kernel_tree
+          [ -f "drivers/misc/qseecom.c" ] && sed -i 's/DMA_BIT_MASK(32)/(u32)DMA_BIT_MASK(32)/g' drivers/misc/qseecom.c
+          [ -f "drivers/misc/Makefile" ] && echo "CFLAGS_qseecom.o += -Wno-constant-conversion" >> drivers/misc/Makefile
 
       - name: Change LTO Type
         if: ${{ github.event.inputs.LTO_CHOICE == 'thin_lto' }}
