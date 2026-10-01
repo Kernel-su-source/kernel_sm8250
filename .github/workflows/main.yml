@@ -10,7 +10,7 @@ on:
         required: true
       KERNEL_TREE_BRANCH_1:
         description: 'Kernel Tree Branch 1'
-        default: 'stable-1.6'
+        default: 'bpf-staging'
         required: true
       CODENAME:
         description: 'Codename (do not change)'
